@@ -1,0 +1,22 @@
+version: 0.2
+phases:
+  install:
+    runtime-versions:
+        python: 3.8
+    commands:
+      - pip install -r codebuild_requirements.txt
+  build:
+    commands:
+      - python --version
+      - export BUCKET=project-deployment-dev-artifacts
+      - echo "Starting package build"
+
+      - sam build --template-file services_template.yml --base-dir . --build-dir .aws-sam/services
+
+      - sam package --template-file .aws-sam/services/template.yaml --output-template-file services-output-template.yml --s3-bucket $BUCKET
+      - echo "SAM build & pacakging completed!"
+artifacts:
+  type: zip
+  files:
+    - services_template.yml
+    - services-output-template.yml

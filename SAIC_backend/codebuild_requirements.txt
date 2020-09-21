@@ -1,0 +1,4 @@
+requests
+boto3
+awscli
+aws-sam-cli

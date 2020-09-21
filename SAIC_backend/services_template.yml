@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "SAIC Assessment REST API build with serverless technology"
+
+#default configuration for lambda and api
+Globals:
+  Function:
+    Runtime: python3.8
+    Timeout: 30
+    Tags:
+      Scope: SAIC Assessment
+  Api:
+    EndpointConfiguration: REGIONAL
+    # Cors: "'*'"
+    Cors:
+      AllowMethods: "'POST, GET, PUT, DELETE'"
+      AllowHeaders: "'Content-Type'"
+      AllowOrigin: "'*'"
+      # MaxAge: "'600'"
+      # AllowCredentials: True   
+
+# parameter declaration with default value
+Parameters:
+  ExecutionEnv:
+    Type : String
+    Default : dev
+    AllowedValues :
+      - dev
+      - test
+      - prod
+Mappings:
+  #mappings for lambda configuration
+  LambdaConfigMap:
+    dev:
+      LambdaExecRoleArn : ""
+    test:
+      LambdaExecRoleArn : ""
+    prod:
+      LambdaExecRoleArn : ""
+
+Resources:
+  #creating saic root api
+  SAICServerlessApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref ExecutionEnv
+      Name: !Sub SAIC-${ExecutionEnv}
+  
+ #creating s3 buckets for assets store
+  SAICS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: PublicRead
+      # AccessControl: Private
+      BucketName: !Sub saic-assessment-bucket-${ExecutionEnv}
+      CorsConfiguration:
+        CorsRules:
+        - AllowedHeaders: ['*']
+          AllowedMethods: [GET, PUT, POST]
+          AllowedOrigins: ['*']
+          Id: !Sub saic-cors-rule-${ExecutionEnv}
+
+  #creating roles for Lambda execution
+  LambdaExecRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName : !Sub saic-lambda-exec-role-${ExecutionEnv}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        #- arn:aws:iam::aws:policy/AdministratorAccess
+      Policies:
+        - PolicyName: !Sub saic-lambda-exec-policy-${ExecutionEnv}
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: ["s3:*","dynamodb:*","rekognition:*"]
+                Resource: '*'
+  
+########################################## Creating Lambda and APi ##########################################################        
+
+  #face comparison api with lambda
+  facecomparison:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: app-services/face-comparison/
+      Handler: face-comparison.lambda_handler
+      Role: !GetAtt LambdaExecRole.Arn
+      Environment:
+        Variables: 
+          "BUCKETNAME": !Sub saic-assessment-bucket-${ExecutionEnv}                
+      Events:
+        facecomparisonevent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SAICServerlessApi
+            Path: /face-comparison
+            Method: GET
